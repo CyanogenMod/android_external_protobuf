@@ -28,22 +28,47 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Author: wink@google.com (Wink Saville)
-//
+// Author: bduff@google.com (Brian Duff)
+//  Based on original Protocol Buffers design by
+//  Sanjay Ghemawat, Jeff Dean, and others.
 
-package protobuf_unittest_import;
+#ifndef GOOGLE_PROTOBUF_COMPILER_JAVA_EXTENSION_H_
+#define GOOGLE_PROTOBUF_COMPILER_JAVA_EXTENSION_H_
 
-option java_package = "com.google.protobuf.micro";
-// Explicit outer classname to suppress legacy info.
-option java_outer_classname = "UnittestRecursiveMicro";
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/compiler/javanano/javanano_params.h>
+#include <google/protobuf/descriptor.pb.h>
 
-message RecursiveMessageMicro {
-  message NestedMessage {
-    optional RecursiveMessageMicro a = 1;
+
+namespace google {
+namespace protobuf {
+  namespace io {
+    class Printer;             // printer.h
   }
-
-  required int32 id = 1;
-  optional NestedMessage nested_message = 2;
-  optional RecursiveMessageMicro optional_recursive_message_micro = 3;
-  repeated RecursiveMessageMicro repeated_recursive_message_micro = 4;
 }
+
+namespace protobuf {
+namespace compiler {
+namespace javanano {
+
+class ExtensionGenerator {
+ public:
+  explicit ExtensionGenerator(const FieldDescriptor* descriptor, const Params& params);
+  ~ExtensionGenerator();
+
+  void Generate(io::Printer* printer) const;
+
+ private:
+  const Params& params_;
+  const FieldDescriptor* descriptor_;
+  map<string, string> variables_;
+
+  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(ExtensionGenerator);
+};
+
+}  // namespace javanano
+}  // namespace compiler
+}  // namespace protobuf
+}  // namespace google
+
+#endif  // GOOGLE_PROTOBUF_COMPILER_JAVA_EXTENSION_H_

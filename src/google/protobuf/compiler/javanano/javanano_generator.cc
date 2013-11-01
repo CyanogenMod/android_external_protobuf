@@ -57,6 +57,10 @@ void UpdateParamsRecursively(Params& params,
     params.set_java_package(
       file->name(), file->options().java_package());
   }
+  if (file->options().has_java_multiple_files()) {
+    params.set_java_multiple_files(
+      file->name(), file->options().java_multiple_files());
+  }
 
   // Loop through all dependent files recursively
   // adding dep
@@ -84,11 +88,6 @@ bool JavaNanoGenerator::Generate(const FileDescriptor* file,
   string output_list_file;
   Params params(file->name());
 
-  // Get options from the proto file
-  if (file->options().has_java_multiple_files()) {
-    params.set_java_multiple_files(file->options().java_multiple_files());
-  }
-
   // Update per file params
   UpdateParamsRecursively(params, file);
 
@@ -115,8 +114,12 @@ bool JavaNanoGenerator::Generate(const FileDescriptor* file,
           return false;
         }
         params.set_java_outer_classname(parts[0], parts[1]);
+    } else if (options[i].first == "store_unknown_fields") {
+      params.set_store_unknown_fields(options[i].second == "true");
     } else if (options[i].first == "java_multiple_files") {
-        params.set_java_multiple_files(options[i].second == "true");
+      params.set_override_java_multiple_files(options[i].second == "true");
+    } else if (options[i].first == "java_nano_generate_has") {
+        params.set_generate_has(options[i].second == "true");
     } else {
       *error = "Ignore unknown javanano generator option: " + options[i].first;
     }
@@ -135,16 +138,18 @@ bool JavaNanoGenerator::Generate(const FileDescriptor* file,
 
   vector<string> all_files;
 
-  string java_filename = package_dir;
-  java_filename += file_generator.classname();
-  java_filename += ".java";
-  all_files.push_back(java_filename);
+  if (IsOuterClassNeeded(params, file)) {
+    string java_filename = package_dir;
+    java_filename += file_generator.classname();
+    java_filename += ".java";
+    all_files.push_back(java_filename);
 
-  // Generate main java file.
-  scoped_ptr<io::ZeroCopyOutputStream> output(
-    output_directory->Open(java_filename));
-  io::Printer printer(output.get(), '$');
-  file_generator.Generate(&printer);
+    // Generate main java file.
+    scoped_ptr<io::ZeroCopyOutputStream> output(
+      output_directory->Open(java_filename));
+    io::Printer printer(output.get(), '$');
+    file_generator.Generate(&printer);
+  }
 
   // Generate sibling files.
   file_generator.GenerateSiblings(package_dir, output_directory, &all_files);

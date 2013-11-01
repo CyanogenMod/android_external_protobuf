@@ -30,16 +30,31 @@
 
 package com.google.protobuf;
 
+import com.google.protobuf.nano.CodedInputByteBufferNano;
+import com.google.protobuf.nano.Extensions;
+import com.google.protobuf.nano.Extensions.AnotherMessage;
+import com.google.protobuf.nano.FileScopeEnumRefNano;
 import com.google.protobuf.nano.InternalNano;
 import com.google.protobuf.nano.MessageNano;
+import com.google.protobuf.nano.MessageScopeEnumRefNano;
+import com.google.protobuf.nano.MultipleImportingNonMultipleNano1;
+import com.google.protobuf.nano.MultipleImportingNonMultipleNano2;
+import com.google.protobuf.nano.MultipleNameClashNano;
+import com.google.protobuf.nano.NanoHasOuterClass.TestAllTypesNanoHas;
 import com.google.protobuf.nano.NanoOuterClass;
 import com.google.protobuf.nano.NanoOuterClass.TestAllTypesNano;
-import com.google.protobuf.nano.RecursiveMessageNano;
-import com.google.protobuf.nano.SimpleMessageNano;
 import com.google.protobuf.nano.UnittestImportNano;
-import com.google.protobuf.nano.CodedInputByteBufferNano;
+import com.google.protobuf.nano.UnittestMultipleNano;
+import com.google.protobuf.nano.UnittestRecursiveNano.RecursiveMessageNano;
+import com.google.protobuf.nano.UnittestSimpleNano.SimpleMessageNano;
+import com.google.protobuf.nano.UnittestSingleNano.SingleMessageNano;
+import com.google.protobuf.nano.UnittestStringutf8Nano.StringUtf8;
 
 import junit.framework.TestCase;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Test nano runtime.
@@ -1948,6 +1963,24 @@ public class NanoTest extends TestCase {
     assertEquals(TestAllTypesNano.BAR, msg.repeatedPackedNestedEnum[1]);
   }
 
+  public void testNanoRepeatedPackedSerializedSize() throws Exception {
+    TestAllTypesNano msg = new TestAllTypesNano();
+    msg.repeatedPackedInt32 = new int[] { 123, 789, 456 };
+    int msgSerializedSize = msg.getSerializedSize();
+    byte [] result = MessageNano.toByteArray(msg);
+    //System.out.printf("mss=%d result.length=%d\n", msgSerializedSize, result.length);
+    assertTrue(msgSerializedSize == 11);
+    assertEquals(result.length, msgSerializedSize);
+    TestAllTypesNano msg2 = new TestAllTypesNano();
+    msg2.repeatedPackedInt32 = new int[] { 123, 789, 456 };
+    byte [] result2 = new byte[msgSerializedSize];
+    MessageNano.toByteArray(msg2, result2, 0, msgSerializedSize);
+
+    // Check equal size and content.
+    assertEquals(msgSerializedSize, msg2.getSerializedSize());
+    assertTrue(Arrays.equals(result, result2));
+  }
+
   public void testNanoRepeatedInt32ReMerge() throws Exception {
     TestAllTypesNano msg = new TestAllTypesNano();
     msg.repeatedInt32 = new int[] { 234 };
@@ -2034,6 +2067,55 @@ public class NanoTest extends TestCase {
     assertEquals(nestedMsg2.bb, newMsg.repeatedNestedMessage[2].bb);
   }
 
+  /**
+   * Tests that code generation correctly wraps a single message into its outer
+   * class. The class {@code SingleMessageNano} is imported from the outer
+   * class {@code UnittestSingleNano}, whose name is implicit. Any error would
+   * cause this method to fail compilation.
+   */
+  public void testNanoSingle() throws Exception {
+    SingleMessageNano msg = new SingleMessageNano();
+  }
+
+  /**
+   * Tests that code generation correctly skips generating the outer class if
+   * unnecessary, letting a file-scope entity have the same name. The class
+   * {@code MultipleNameClashNano} shares the same name with the file's outer
+   * class defined explicitly, but the file contains no other entities and has
+   * java_multiple_files set. Any error would cause this method to fail
+   * compilation.
+   */
+  public void testNanoMultipleNameClash() throws Exception {
+    MultipleNameClashNano msg = new MultipleNameClashNano();
+    msg.field = 0;
+  }
+
+  /**
+   * Tests that code generation correctly handles enums in different scopes in
+   * a source file with the option java_multiple_files set to true. Any error
+   * would cause this method to fail compilation.
+   */
+  public void testNanoMultipleEnumScoping() throws Exception {
+    FileScopeEnumRefNano msg1 = new FileScopeEnumRefNano();
+    msg1.enumField = UnittestMultipleNano.ONE;
+    MessageScopeEnumRefNano msg2 = new MessageScopeEnumRefNano();
+    msg2.enumField = MessageScopeEnumRefNano.TWO;
+  }
+
+  /**
+   * Tests that code generation with mixed values of the java_multiple_files
+   * options between the main source file and the imported source files would
+   * generate correct references. Any error would cause this method to fail
+   * compilation.
+   */
+  public void testNanoMultipleImportingNonMultiple() throws Exception {
+    UnittestImportNano.ImportMessageNano importMsg = new UnittestImportNano.ImportMessageNano();
+    MultipleImportingNonMultipleNano1 nano1 = new MultipleImportingNonMultipleNano1();
+    nano1.field = importMsg;
+    MultipleImportingNonMultipleNano2 nano2 = new MultipleImportingNonMultipleNano2();
+    nano2.nano1 = nano1;
+  }
+
   public void testNanoDefaults() throws Exception {
     TestAllTypesNano msg = new TestAllTypesNano();
     for (int i = 0; i < 2; i++) {
@@ -2057,6 +2139,12 @@ public class NanoTest extends TestCase {
       assertEquals(TestAllTypesNano.BAR, msg.defaultNestedEnum);
       assertEquals(NanoOuterClass.FOREIGN_NANO_BAR, msg.defaultForeignEnum);
       assertEquals(UnittestImportNano.IMPORT_NANO_BAR, msg.defaultImportEnum);
+      assertEquals(Float.POSITIVE_INFINITY, msg.defaultFloatInf);
+      assertEquals(Float.NEGATIVE_INFINITY, msg.defaultFloatNegInf);
+      assertEquals(Float.NaN, msg.defaultFloatNan);
+      assertEquals(Double.POSITIVE_INFINITY, msg.defaultDoubleInf);
+      assertEquals(Double.NEGATIVE_INFINITY, msg.defaultDoubleNegInf);
+      assertEquals(Double.NaN, msg.defaultDoubleNan);
 
       // Default values are not output, except for required fields.
       byte [] result = MessageNano.toByteArray(msg);
@@ -2066,6 +2154,113 @@ public class NanoTest extends TestCase {
       assertEquals(result.length, msgSerializedSize);
       msg.clear();
     }
+  }
+
+  public void testNanoWithHasParseFrom() throws Exception {
+    TestAllTypesNanoHas msg = null;
+    // Test false on creation, after clear and upon empty parse.
+    for (int i = 0; i < 3; i++) {
+      if (i == 0) {
+        msg = new TestAllTypesNanoHas();
+      } else if (i == 1) {
+        msg.clear();
+      } else if (i == 2) {
+        msg = TestAllTypesNanoHas.parseFrom(new byte[0]);
+      }
+      assertFalse(msg.hasOptionalInt32);
+      assertFalse(msg.hasOptionalString);
+      assertFalse(msg.hasOptionalBytes);
+      assertFalse(msg.hasOptionalNestedEnum);
+      assertFalse(msg.hasDefaultInt32);
+      assertFalse(msg.hasDefaultString);
+      assertFalse(msg.hasDefaultBytes);
+      assertFalse(msg.hasDefaultFloatNan);
+      assertFalse(msg.hasDefaultNestedEnum);
+      assertFalse(msg.hasId);
+      msg.optionalInt32 = 123;
+      msg.optionalNestedMessage = new TestAllTypesNanoHas.NestedMessage();
+      msg.optionalNestedMessage.bb = 2;
+      msg.optionalNestedEnum = TestAllTypesNano.BAZ;
+    }
+
+    byte [] result = MessageNano.toByteArray(msg);
+    int msgSerializedSize = msg.getSerializedSize();
+    //System.out.printf("mss=%d result.length=%d\n", msgSerializedSize, result.length);
+    assertTrue(msgSerializedSize == 13);
+    assertEquals(result.length, msgSerializedSize);
+
+    // Has fields true upon parse.
+    TestAllTypesNanoHas newMsg = TestAllTypesNanoHas.parseFrom(result);
+    assertEquals(123, newMsg.optionalInt32);
+    assertTrue(newMsg.hasOptionalInt32);
+    assertEquals(2, newMsg.optionalNestedMessage.bb);
+    assertTrue(newMsg.optionalNestedMessage.hasBb);
+    assertEquals(TestAllTypesNanoHas.BAZ, newMsg.optionalNestedEnum);
+    assertTrue(newMsg.hasOptionalNestedEnum);
+  }
+
+  public void testNanoWithHasSerialize() throws Exception {
+    TestAllTypesNanoHas msg = new TestAllTypesNanoHas();
+    msg.hasOptionalInt32 = true;
+    msg.hasOptionalString = true;
+    msg.hasOptionalBytes = true;
+    msg.optionalNestedMessage = new TestAllTypesNanoHas.NestedMessage();
+    msg.optionalNestedMessage.hasBb = true;
+    msg.hasOptionalNestedEnum = true;
+    msg.hasDefaultInt32 = true;
+    msg.hasDefaultString = true;
+    msg.hasDefaultBytes = true;
+    msg.hasDefaultFloatNan = true;
+    msg.hasDefaultNestedEnum = true;
+
+    byte [] result = MessageNano.toByteArray(msg);
+    int msgSerializedSize = msg.getSerializedSize();
+    assertEquals(result.length, msgSerializedSize);
+
+    // Now deserialize and find that all fields are set and equal to their defaults.
+    TestAllTypesNanoHas newMsg = TestAllTypesNanoHas.parseFrom(result);
+    assertTrue(newMsg.hasOptionalInt32);
+    assertTrue(newMsg.hasOptionalString);
+    assertTrue(newMsg.hasOptionalBytes);
+    assertTrue(newMsg.optionalNestedMessage.hasBb);
+    assertTrue(newMsg.hasOptionalNestedEnum);
+    assertTrue(newMsg.hasDefaultInt32);
+    assertTrue(newMsg.hasDefaultString);
+    assertTrue(newMsg.hasDefaultBytes);
+    assertTrue(newMsg.hasDefaultFloatNan);
+    assertTrue(newMsg.hasDefaultNestedEnum);
+    assertTrue(newMsg.hasId);
+    assertEquals(0, newMsg.optionalInt32);
+    assertEquals(0, newMsg.optionalString.length());
+    assertEquals(0, newMsg.optionalBytes.length);
+    assertEquals(0, newMsg.optionalNestedMessage.bb);
+    assertEquals(TestAllTypesNanoHas.FOO, newMsg.optionalNestedEnum);
+    assertEquals(41, newMsg.defaultInt32);
+    assertEquals("hello", newMsg.defaultString);
+    assertEquals("world", new String(newMsg.defaultBytes, "UTF-8"));
+    assertEquals(TestAllTypesNanoHas.BAR, newMsg.defaultNestedEnum);
+    assertEquals(Float.NaN, newMsg.defaultFloatNan);
+    assertEquals(0, newMsg.id);
+  }
+
+  /**
+   * Tests that fields with a default value of NaN are not serialized when
+   * set to NaN. This is a special case as NaN != NaN, so normal equality
+   * checks don't work.
+   */
+  public void testNanoNotANumberDefaults() throws Exception {
+    TestAllTypesNano msg = new TestAllTypesNano();
+    msg.defaultDoubleNan = 0;
+    msg.defaultFloatNan = 0;
+    byte[] result = MessageNano.toByteArray(msg);
+    int msgSerializedSize = msg.getSerializedSize();
+    assertTrue(msgSerializedSize > 3);
+
+    msg.defaultDoubleNan = Double.NaN;
+    msg.defaultFloatNan = Float.NaN;
+    result = MessageNano.toByteArray(msg);
+    msgSerializedSize = msg.getSerializedSize();
+    assertEquals(3, msgSerializedSize);
   }
 
   /**
@@ -2100,5 +2295,163 @@ public class NanoTest extends TestCase {
     assertTrue(input.isAtEnd());
     input.popLimit(limit);
     assertEquals(5, input.readRawByte());
+  }
+
+  // Test a smattering of various proto types for printing
+  public void testMessageNanoPrinter() {
+    TestAllTypesNano msg = new TestAllTypesNano();
+    msg.optionalInt32 = 14;
+    msg.optionalFloat = 42.3f;
+    msg.optionalString = "String \"with' both quotes";
+    msg.optionalBytes = new byte[5];
+    msg.optionalGroup = new TestAllTypesNano.OptionalGroup();
+    msg.optionalGroup.a = 15;
+    msg.repeatedInt64 = new long[2];
+    msg.repeatedInt64[0] = 1L;
+    msg.repeatedInt64[1] = -1L;
+    msg.repeatedBytes = new byte[2][];
+    msg.repeatedBytes[1] = new byte[5];
+    msg.repeatedGroup = new TestAllTypesNano.RepeatedGroup[2];
+    msg.repeatedGroup[0] = new TestAllTypesNano.RepeatedGroup();
+    msg.repeatedGroup[0].a = -27;
+    msg.repeatedGroup[1] = new TestAllTypesNano.RepeatedGroup();
+    msg.repeatedGroup[1].a = -72;
+    msg.optionalNestedMessage = new TestAllTypesNano.NestedMessage();
+    msg.optionalNestedMessage.bb = 7;
+    msg.repeatedNestedMessage = new TestAllTypesNano.NestedMessage[2];
+    msg.repeatedNestedMessage[0] = new TestAllTypesNano.NestedMessage();
+    msg.repeatedNestedMessage[0].bb = 77;
+    msg.repeatedNestedMessage[1] = new TestAllTypesNano.NestedMessage();
+    msg.repeatedNestedMessage[1].bb = 88;
+    msg.optionalNestedEnum = TestAllTypesNano.BAZ;
+    msg.repeatedNestedEnum = new int[2];
+    msg.repeatedNestedEnum[0] = TestAllTypesNano.BAR;
+    msg.repeatedNestedEnum[1] = TestAllTypesNano.FOO;
+
+    String protoPrint = msg.toString();
+    assertTrue(protoPrint.contains("TestAllTypesNano <"));
+    assertTrue(protoPrint.contains("  optional_int32: 14"));
+    assertTrue(protoPrint.contains("  optional_float: 42.3"));
+    assertTrue(protoPrint.contains("  optional_double: 0.0"));
+    assertTrue(protoPrint.contains("  optional_string: \"String \\u0022with\\u0027 both quotes\""));
+    assertTrue(protoPrint.contains("  optional_bytes: [B@"));
+    assertTrue(protoPrint.contains("  optionalGroup <\n    a: 15\n  >"));
+
+    assertTrue(protoPrint.contains("  repeated_int64: 1"));
+    assertTrue(protoPrint.contains("  repeated_int64: -1"));
+    assertTrue(protoPrint.contains("  repeated_bytes: null\n  repeated_bytes: [B@"));
+    assertTrue(protoPrint.contains("  repeatedGroup <\n    a: -27\n  >\n"
+            + "  repeatedGroup <\n    a: -72\n  >"));
+    assertTrue(protoPrint.contains("  optionalNestedMessage <\n    bb: 7\n  >"));
+    assertTrue(protoPrint.contains("  repeatedNestedMessage <\n    bb: 77\n  >\n"
+            + "  repeatedNestedMessage <\n    bb: 88\n  >"));
+    assertTrue(protoPrint.contains("  optional_nested_enum: 3"));
+    assertTrue(protoPrint.contains("  repeated_nested_enum: 2\n  repeated_nested_enum: 1"));
+    assertTrue(protoPrint.contains("  default_int32: 41"));
+    assertTrue(protoPrint.contains("  default_string: \"hello\""));
+  }
+
+  public void testExtensions() throws Exception {
+    Extensions.ExtendableMessage message = new Extensions.ExtendableMessage();
+    message.field = 5;
+    message.setExtension(Extensions.someString, "Hello World!");
+    message.setExtension(Extensions.someBool, true);
+    message.setExtension(Extensions.someInt, 42);
+    message.setExtension(Extensions.someLong, 124234234234L);
+    message.setExtension(Extensions.someFloat, 42.0f);
+    message.setExtension(Extensions.someDouble, 422222.0);
+    message.setExtension(Extensions.someEnum, Extensions.FIRST_VALUE);
+    AnotherMessage another = new AnotherMessage();
+    another.string = "Foo";
+    another.value = true;
+    message.setExtension(Extensions.someMessage, another);
+
+    message.setExtension(Extensions.someRepeatedString, list("a", "bee", "seeya"));
+    message.setExtension(Extensions.someRepeatedBool, list(true, false, true));
+    message.setExtension(Extensions.someRepeatedInt, list(4, 8, 15, 16, 23, 42));
+    message.setExtension(Extensions.someRepeatedLong, list(4L, 8L, 15L, 16L, 23L, 42L));
+    message.setExtension(Extensions.someRepeatedFloat, list(1.0f, 3.0f));
+    message.setExtension(Extensions.someRepeatedDouble, list(55.133, 3.14159));
+    message.setExtension(Extensions.someRepeatedEnum, list(Extensions.FIRST_VALUE,
+        Extensions.SECOND_VALUE));
+    AnotherMessage second = new AnotherMessage();
+    second.string = "Whee";
+    second.value = false;
+    message.setExtension(Extensions.someRepeatedMessage, list(another, second));
+
+    byte[] data = MessageNano.toByteArray(message);
+
+    Extensions.ExtendableMessage deserialized = Extensions.ExtendableMessage.parseFrom(data);
+    assertEquals(5, deserialized.field);
+    assertEquals("Hello World!", deserialized.getExtension(Extensions.someString));
+    assertEquals(Boolean.TRUE, deserialized.getExtension(Extensions.someBool));
+    assertEquals(Integer.valueOf(42), deserialized.getExtension(Extensions.someInt));
+    assertEquals(Long.valueOf(124234234234L), deserialized.getExtension(Extensions.someLong));
+    assertEquals(Float.valueOf(42.0f), deserialized.getExtension(Extensions.someFloat));
+    assertEquals(Double.valueOf(422222.0), deserialized.getExtension(Extensions.someDouble));
+    assertEquals(Integer.valueOf(Extensions.FIRST_VALUE),
+        deserialized.getExtension(Extensions.someEnum));
+    assertEquals(another.string, deserialized.getExtension(Extensions.someMessage).string);
+    assertEquals(another.value, deserialized.getExtension(Extensions.someMessage).value);
+    assertEquals(list("a", "bee", "seeya"), deserialized.getExtension(Extensions.someRepeatedString));
+    assertEquals(list(true, false, true), deserialized.getExtension(Extensions.someRepeatedBool));
+    assertEquals(list(4, 8, 15, 16, 23, 42), deserialized.getExtension(Extensions.someRepeatedInt));
+    assertEquals(list(4L, 8L, 15L, 16L, 23L, 42L), deserialized.getExtension(Extensions.someRepeatedLong));
+    assertEquals(list(1.0f, 3.0f), deserialized.getExtension(Extensions.someRepeatedFloat));
+    assertEquals(list(55.133, 3.14159), deserialized.getExtension(Extensions.someRepeatedDouble));
+    assertEquals(list(Extensions.FIRST_VALUE,
+        Extensions.SECOND_VALUE), deserialized.getExtension(Extensions.someRepeatedEnum));
+    assertEquals("Foo", deserialized.getExtension(Extensions.someRepeatedMessage).get(0).string);
+    assertEquals(true, deserialized.getExtension(Extensions.someRepeatedMessage).get(0).value);
+    assertEquals("Whee", deserialized.getExtension(Extensions.someRepeatedMessage).get(1).string);
+    assertEquals(false, deserialized.getExtension(Extensions.someRepeatedMessage).get(1).value);
+  }
+
+  public void testUnknownFields() throws Exception {
+    // Check that we roundtrip (serialize and deserialize) unrecognized fields.
+    AnotherMessage message = new AnotherMessage();
+    message.string = "Hello World";
+    message.value = false;
+
+    byte[] bytes = MessageNano.toByteArray(message);
+    int extraFieldSize = CodedOutputStream.computeStringSize(1001, "This is an unknown field");
+    byte[] newBytes = new byte[bytes.length + extraFieldSize];
+    System.arraycopy(bytes, 0, newBytes, 0, bytes.length);
+    CodedOutputStream.newInstance(newBytes, bytes.length, extraFieldSize).writeString(1001,
+        "This is an unknown field");
+
+    // Deserialize with an unknown field.
+    AnotherMessage deserialized = AnotherMessage.parseFrom(newBytes);
+    byte[] serialized = MessageNano.toByteArray(deserialized);
+
+    assertEquals(newBytes.length, serialized.length);
+
+    // Clear, and make sure it clears everything.
+    deserialized.clear();
+    assertEquals(0, MessageNano.toByteArray(deserialized).length);
+  }
+
+  public void testMergeFrom() throws Exception {
+    SimpleMessageNano message = new SimpleMessageNano();
+    message.d = 123;
+    byte[] bytes = MessageNano.toByteArray(message);
+
+    SimpleMessageNano newMessage = MessageNano.mergeFrom(new SimpleMessageNano(), bytes);
+    assertEquals(message.d, newMessage.d);
+  }
+
+  public void testJavaKeyword() throws Exception {
+    TestAllTypesNano msg = new TestAllTypesNano();
+    msg.synchronized_ = 123;
+    assertEquals(123, msg.synchronized_);
+  }
+
+  private <T> List<T> list(T first, T... remaining) {
+    List<T> list = new ArrayList<T>();
+    list.add(first);
+    for (T item : remaining) {
+      list.add(item);
+    }
+    return list;
   }
 }

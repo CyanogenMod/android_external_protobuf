@@ -54,9 +54,9 @@ namespace {
 void SetEnumVariables(const Params& params,
     const FieldDescriptor* descriptor, map<string, string>* variables) {
   (*variables)["name"] =
-    UnderscoresToCamelCase(descriptor);
+    RenameJavaKeywords(UnderscoresToCamelCase(descriptor));
   (*variables)["capitalized_name"] =
-    UnderscoresToCapitalizedCamelCase(descriptor);
+    RenameJavaKeywords(UnderscoresToCapitalizedCamelCase(descriptor));
   (*variables)["number"] = SimpleItoa(descriptor->number());
   (*variables)["type"] = "int";
   (*variables)["default"] = DefaultValue(params, descriptor);
@@ -82,12 +82,22 @@ void EnumFieldGenerator::
 GenerateMembers(io::Printer* printer) const {
   printer->Print(variables_,
     "public int $name$ = $default$;\n");
+
+  if (params_.generate_has()) {
+    printer->Print(variables_,
+      "public boolean has$capitalized_name$ = false;\n");
+  }
 }
 
 void EnumFieldGenerator::
 GenerateParsingCode(io::Printer* printer) const {
   printer->Print(variables_,
     "  this.$name$ = input.readInt32();\n");
+
+  if (params_.generate_has()) {
+    printer->Print(variables_,
+      "  has$capitalized_name$ = true;\n");
+  }
 }
 
 void EnumFieldGenerator::
@@ -96,8 +106,14 @@ GenerateSerializationCode(io::Printer* printer) const {
     printer->Print(variables_,
       "output.writeInt32($number$, this.$name$);\n");
   } else {
+    if (params_.generate_has()) {
+      printer->Print(variables_,
+        "if (this.$name$ != $default$ || has$capitalized_name$) {\n");
+    } else {
+      printer->Print(variables_,
+        "if (this.$name$ != $default$) {\n");
+    }
     printer->Print(variables_,
-      "if (this.$name$ != $default$) {\n"
       "  output.writeInt32($number$, this.$name$);\n"
       "}\n");
   }
@@ -110,8 +126,14 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
       "size += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
       "  .computeInt32Size($number$, this.$name$);\n");
   } else {
+    if (params_.generate_has()) {
+      printer->Print(variables_,
+        "if (this.$name$ != $default$ || has$capitalized_name$) {\n");
+    } else {
+      printer->Print(variables_,
+        "if (this.$name$ != $default$) {\n");
+    }
     printer->Print(variables_,
-      "if (this.$name$ != $default$) {\n"
       "  size += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
       "    .computeInt32Size($number$, this.$name$);\n"
       "}\n");
@@ -166,7 +188,9 @@ GenerateParsingCode(io::Printer* printer) const {
     printer->Print(variables_,
       "int arrayLength = com.google.protobuf.nano.WireFormatNano.getRepeatedFieldArrayLength(input, $tag$);\n"
       "int i = this.$name$.length;\n"
-      "this.$name$ = java.util.Arrays.copyOf(this.$name$, this.$name$.length + arrayLength);\n"
+      "int[] newArray = new int[i + arrayLength];\n"
+      "System.arraycopy(this.$name$, 0, newArray, 0, i);\n"
+      "this.$name$ = newArray;\n"
       "for (; i < this.$name$.length - 1; i++) {\n"
       "  this.$name$[i] = input.readInt32();\n"
       "  input.readTag();\n"

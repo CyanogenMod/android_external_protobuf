@@ -93,7 +93,7 @@ public abstract class MessageNano {
             output.checkNoSpaceLeft();
         } catch (IOException e) {
             throw new RuntimeException("Serializing to a byte array threw an IOException "
-                    + "(should never happen).");
+                    + "(should never happen).", e);
         }
     }
 
@@ -101,7 +101,7 @@ public abstract class MessageNano {
      * Parse {@code data} as a message of this type and merge it with the
      * message being built.
      */
-    public static final MessageNano mergeFrom(MessageNano msg, final byte[] data)
+    public static final <T extends MessageNano> T mergeFrom(T msg, final byte[] data)
         throws InvalidProtocolBufferNanoException {
         return mergeFrom(msg, data, 0, data.length);
     }
@@ -110,8 +110,8 @@ public abstract class MessageNano {
      * Parse {@code data} as a message of this type and merge it with the
      * message being built.
      */
-    public static final MessageNano mergeFrom(MessageNano msg, final byte[] data, final int off,
-        final int len) throws InvalidProtocolBufferNanoException {
+    public static final <T extends MessageNano> T mergeFrom(T msg, final byte[] data,
+            final int off, final int len) throws InvalidProtocolBufferNanoException {
         try {
             final CodedInputByteBufferNano input =
                 CodedInputByteBufferNano.newInstance(data, off, len);
@@ -124,5 +124,13 @@ public abstract class MessageNano {
             throw new RuntimeException("Reading from a byte array threw an IOException (should "
                     + "never happen).");
         }
+    }
+
+    /**
+     * Intended for debugging purposes only. It does not use ASCII protobuf formatting.
+     */
+    @Override
+    public String toString() {
+        return MessageNanoPrinter.print(this);
     }
 }

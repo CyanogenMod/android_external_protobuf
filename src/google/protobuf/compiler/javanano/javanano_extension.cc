@@ -28,69 +28,70 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Author: kenton@google.com (Kenton Varda)
-//  Based on original Protocol Buffers design by
-//  Sanjay Ghemawat, Jeff Dean, and others.
+// Author: bduff@google.com (Brian Duff)
 
-#include <map>
-#include <string>
-
-#include <google/protobuf/compiler/javanano/javanano_params.h>
-#include <google/protobuf/compiler/javanano/javanano_enum.h>
+#include <google/protobuf/compiler/javanano/javanano_extension.h>
 #include <google/protobuf/compiler/javanano/javanano_helpers.h>
 #include <google/protobuf/io/printer.h>
-#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/stubs/strutil.h>
+#include <google/protobuf/wire_format.h>
 
 namespace google {
 namespace protobuf {
 namespace compiler {
 namespace javanano {
 
-EnumGenerator::EnumGenerator(const EnumDescriptor* descriptor, const Params& params)
-  : params_(params), descriptor_(descriptor) {
-  for (int i = 0; i < descriptor_->value_count(); i++) {
-    const EnumValueDescriptor* value = descriptor_->value(i);
-    const EnumValueDescriptor* canonical_value =
-      descriptor_->FindValueByNumber(value->number());
+using internal::WireFormat;
 
-    if (value == canonical_value) {
-      canonical_values_.push_back(value);
-    } else {
-      Alias alias;
-      alias.value = value;
-      alias.canonical_value = canonical_value;
-      aliases_.push_back(alias);
-    }
+void SetVariables(const FieldDescriptor* descriptor, const Params params,
+                  map<string, string>* variables) {
+  (*variables)["name"] = 
+    RenameJavaKeywords(UnderscoresToCamelCase(descriptor));
+  (*variables)["number"] = SimpleItoa(descriptor->number());
+  (*variables)["extends"] = ClassName(params, descriptor->containing_type());
+
+  string type;
+  JavaType java_type = GetJavaType(descriptor->type());
+  switch (java_type) {
+    case JAVATYPE_ENUM:
+      type = "java.lang.Integer";
+      break;
+    case JAVATYPE_MESSAGE:
+      type = ClassName(params, descriptor->message_type());
+      break;
+    default:
+      type = BoxedPrimitiveTypeName(java_type);
+      break;
   }
+  (*variables)["type"] = type;
 }
 
-EnumGenerator::~EnumGenerator() {}
+ExtensionGenerator::
+ExtensionGenerator(const FieldDescriptor* descriptor, const Params& params)
+  : params_(params), descriptor_(descriptor) {
+  SetVariables(descriptor, params, &variables_);
+}
 
-void EnumGenerator::Generate(io::Printer* printer) {
-  printer->Print("// enum $classname$\n", "classname", descriptor_->name());
-  for (int i = 0; i < canonical_values_.size(); i++) {
-    map<string, string> vars;
-    vars["name"] = RenameJavaKeywords(canonical_values_[i]->name());
-    vars["canonical_value"] = SimpleItoa(canonical_values_[i]->number());
-    printer->Print(vars,
-      "public static final int $name$ = $canonical_value$;\n");
+ExtensionGenerator::~ExtensionGenerator() {}
+
+void ExtensionGenerator::Generate(io::Printer* printer) const {
+  if (descriptor_->is_repeated()) {
+    printer->Print(variables_,
+      "// Extends $extends$\n"
+      "public static final com.google.protobuf.nano.Extension<java.util.List<$type$>> $name$ = \n"
+      "    com.google.protobuf.nano.Extension.createRepeated($number$,\n"
+      "        new com.google.protobuf.nano.Extension.TypeLiteral<java.util.List<$type$>>(){});\n");
+  } else {
+    printer->Print(variables_,
+      "// Extends $extends$\n"
+      "public static final com.google.protobuf.nano.Extension<$type$> $name$ =\n"
+      "    com.google.protobuf.nano.Extension.create($number$,\n"
+      "        new com.google.protobuf.nano.Extension.TypeLiteral<$type$>(){});\n");
   }
-
-  // -----------------------------------------------------------------
-
-  for (int i = 0; i < aliases_.size(); i++) {
-    map<string, string> vars;
-    vars["name"] = RenameJavaKeywords(aliases_[i].value->name());
-    vars["canonical_name"] = aliases_[i].canonical_value->name();
-    printer->Print(vars,
-      "public static final int $name$ = $canonical_name$;\n");
-  }
-
-  printer->Print("\n");
 }
 
 }  // namespace javanano
 }  // namespace compiler
 }  // namespace protobuf
 }  // namespace google
+

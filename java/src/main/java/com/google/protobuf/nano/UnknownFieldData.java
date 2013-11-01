@@ -1,5 +1,5 @@
 // Protocol Buffers - Google's data interchange format
-// Copyright 2008 Google Inc.  All rights reserved.
+// Copyright 2013 Google Inc.  All rights reserved.
 // http://code.google.com/p/protobuf/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28,22 +28,20 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Author: wink@google.com (Wink Saville)
-//
+package com.google.protobuf.nano;
 
-package protobuf_unittest_import;
+/**
+ * Stores unknown fields. These might be extensions or fields that the generated API doesn't
+ * know about yet.
+ *
+ * @author bduff@google.com (Brian Duff)
+ */
+public final class UnknownFieldData {
+  final int tag;
+  final byte[] bytes;
 
-option java_package = "com.google.protobuf.micro";
-// Explicit outer classname to suppress legacy info.
-option java_outer_classname = "UnittestRecursiveMicro";
-
-message RecursiveMessageMicro {
-  message NestedMessage {
-    optional RecursiveMessageMicro a = 1;
+  UnknownFieldData(int tag, byte[] bytes) {
+    this.tag = tag;
+    this.bytes = bytes;
   }
-
-  required int32 id = 1;
-  optional NestedMessage nested_message = 2;
-  optional RecursiveMessageMicro optional_recursive_message_micro = 3;
-  repeated RecursiveMessageMicro repeated_recursive_message_micro = 4;
 }

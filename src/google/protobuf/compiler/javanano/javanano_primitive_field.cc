@@ -33,6 +33,7 @@
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
 #include <map>
+#include <math.h>
 #include <string>
 
 #include <google/protobuf/compiler/javanano/javanano_primitive_field.h>
@@ -174,6 +175,38 @@ int FixedSize(FieldDescriptor::Type type) {
   return -1;
 }
 
+// Returns true if the field has a default value equal to NaN.
+bool IsDefaultNaN(const FieldDescriptor* field) {
+  switch (field->type()) {
+    case FieldDescriptor::TYPE_INT32   : return false;
+    case FieldDescriptor::TYPE_UINT32  : return false;
+    case FieldDescriptor::TYPE_SINT32  : return false;
+    case FieldDescriptor::TYPE_FIXED32 : return false;
+    case FieldDescriptor::TYPE_SFIXED32: return false;
+    case FieldDescriptor::TYPE_INT64   : return false;
+    case FieldDescriptor::TYPE_UINT64  : return false;
+    case FieldDescriptor::TYPE_SINT64  : return false;
+    case FieldDescriptor::TYPE_FIXED64 : return false;
+    case FieldDescriptor::TYPE_SFIXED64: return false;
+    case FieldDescriptor::TYPE_FLOAT   :
+      return isnan(field->default_value_float());
+    case FieldDescriptor::TYPE_DOUBLE  :
+      return isnan(field->default_value_double());
+    case FieldDescriptor::TYPE_BOOL    : return false;
+    case FieldDescriptor::TYPE_STRING  : return false;
+    case FieldDescriptor::TYPE_BYTES   : return false;
+    case FieldDescriptor::TYPE_ENUM    : return false;
+    case FieldDescriptor::TYPE_GROUP   : return false;
+    case FieldDescriptor::TYPE_MESSAGE : return false;
+
+    // No default because we want the compiler to complain if any new
+    // types are added.
+  }
+
+  GOOGLE_LOG(FATAL) << "Can't get here.";
+  return false;
+}
+
 // Return true if the type is a that has variable length
 // for instance String's.
 bool IsVariableLenType(JavaType type) {
@@ -208,9 +241,9 @@ bool AllAscii(const string& text) {
 void SetPrimitiveVariables(const FieldDescriptor* descriptor, const Params params,
                            map<string, string>* variables) {
   (*variables)["name"] =
-    UnderscoresToCamelCase(descriptor);
+    RenameJavaKeywords(UnderscoresToCamelCase(descriptor));
   (*variables)["capitalized_name"] =
-    UnderscoresToCapitalizedCamelCase(descriptor);
+    RenameJavaKeywords(UnderscoresToCapitalizedCamelCase(descriptor));
   (*variables)["number"] = SimpleItoa(descriptor->number());
   (*variables)["type"] = PrimitiveTypeName(GetJavaType(descriptor));
   (*variables)["default"] = DefaultValue(params, descriptor);
@@ -288,12 +321,46 @@ GenerateMembers(io::Printer* printer) const {
     printer->Print(variables_,
       "public $type$ $name$ = $default$;\n");
   }
+
+  if (params_.generate_has()) {
+    printer->Print(variables_,
+      "public boolean has$capitalized_name$ = false;\n");
+  }
 }
 
 void PrimitiveFieldGenerator::
 GenerateParsingCode(io::Printer* printer) const {
   printer->Print(variables_,
     "this.$name$ = input.read$capitalized_type$();\n");
+
+  if (params_.generate_has()) {
+    printer->Print(variables_,
+      "has$capitalized_name$ = true;\n");
+  }
+}
+
+void PrimitiveFieldGenerator::
+GenerateSerializationConditional(io::Printer* printer) const {
+  if (params_.generate_has()) {
+    printer->Print(variables_,
+      "if (has$capitalized_name$ || ");
+  } else {
+    printer->Print(variables_,
+      "if (");
+  }
+  if (IsArrayType(GetJavaType(descriptor_))) {
+    printer->Print(variables_,
+      "!java.util.Arrays.equals(this.$name$, $default$)) {\n");
+  } else if (IsReferenceType(GetJavaType(descriptor_))) {
+    printer->Print(variables_,
+      "!this.$name$.equals($default$)) {\n");
+  } else if (IsDefaultNaN(descriptor_)) {
+    printer->Print(variables_,
+      "!$capitalized_type$.isNaN(this.$name$)) {\n");
+  } else {
+    printer->Print(variables_,
+      "this.$name$ != $default$) {\n");
+  }
 }
 
 void PrimitiveFieldGenerator::
@@ -302,17 +369,7 @@ GenerateSerializationCode(io::Printer* printer) const {
     printer->Print(variables_,
       "output.write$capitalized_type$($number$, this.$name$);\n");
   } else {
-    if (IsArrayType(GetJavaType(descriptor_))) {
-      printer->Print(variables_,
-        "if (!java.util.Arrays.equals(this.$name$, $default$)) {\n");
-    } else if (IsReferenceType(GetJavaType(descriptor_))) {
-      printer->Print(variables_,
-        "if (!this.$name$.equals($default$)) {\n");
-    } else {
-      printer->Print(variables_,
-        "if (this.$name$ != $default$) {\n");
-    }
-
+    GenerateSerializationConditional(printer);
     printer->Print(variables_,
       "  output.write$capitalized_type$($number$, this.$name$);\n"
       "}\n");
@@ -326,17 +383,7 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
       "size += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
       "    .compute$capitalized_type$Size($number$, this.$name$);\n");
   } else {
-    if (IsArrayType(GetJavaType(descriptor_))) {
-      printer->Print(variables_,
-        "if (!java.util.Arrays.equals(this.$name$, $default$)) {\n");
-    } else  if (IsReferenceType(GetJavaType(descriptor_))) {
-      printer->Print(variables_,
-        "if (!this.$name$.equals($default$)) {\n");
-    } else {
-      printer->Print(variables_,
-        "if (this.$name$ != $default$) {\n");
-    }
-
+    GenerateSerializationConditional(printer);
     printer->Print(variables_,
       "  size += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
       "      .compute$capitalized_type$Size($number$, this.$name$);\n"
@@ -362,10 +409,6 @@ void RepeatedPrimitiveFieldGenerator::
 GenerateMembers(io::Printer* printer) const {
   printer->Print(variables_,
     "public $type$[] $name$ = $default$;\n");
-  if (descriptor_->options().packed()) {
-    printer->Print(variables_,
-      "private int $name$MemoizedSerializedSize;\n");
-  }
 }
 
 void RepeatedPrimitiveFieldGenerator::
@@ -391,8 +434,20 @@ GenerateParsingCode(io::Printer* printer) const {
   } else {
     printer->Print(variables_,
       "int arrayLength = com.google.protobuf.nano.WireFormatNano.getRepeatedFieldArrayLength(input, $tag$);\n"
-      "int i = this.$name$.length;\n"
-      "this.$name$ = java.util.Arrays.copyOf(this.$name$, this.$name$.length + arrayLength);\n"
+      "int i = this.$name$.length;\n");
+
+    if (GetJavaType(descriptor_) == JAVATYPE_BYTES) {
+      printer->Print(variables_,
+        "byte[][] newArray = new byte[i + arrayLength][];\n"
+        "System.arraycopy(this.$name$, 0, newArray, 0, i);\n"
+        "this.$name$ = newArray;\n");
+    } else {
+      printer->Print(variables_,
+        "$type$[] newArray = new $type$[i + arrayLength];\n"
+        "System.arraycopy(this.$name$, 0, newArray, 0, i);\n"
+        "this.$name$ = newArray;\n");
+    }
+    printer->Print(variables_,
       "for (; i < this.$name$.length - 1; i++) {\n"
       "  this.$name$[i] = input.read$capitalized_type$();\n"
       "  input.readTag();\n"
@@ -403,12 +458,33 @@ GenerateParsingCode(io::Printer* printer) const {
 }
 
 void RepeatedPrimitiveFieldGenerator::
+GenerateRepeatedDataSizeCode(io::Printer* printer) const {
+  // Creates a variable dataSize and puts the serialized size in
+  // there.
+  if (FixedSize(descriptor_->type()) == -1) {
+    printer->Print(variables_,
+      "int dataSize = 0;\n"
+      "for ($type$ element : this.$name$) {\n"
+      "  dataSize += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
+      "    .compute$capitalized_type$SizeNoTag(element);\n"
+      "}\n");
+  } else {
+    printer->Print(variables_,
+      "int dataSize = $fixed_size$ * this.$name$.length;\n");
+  }
+}
+
+void RepeatedPrimitiveFieldGenerator::
 GenerateSerializationCode(io::Printer* printer) const {
   if (descriptor_->options().packed()) {
     printer->Print(variables_,
-      "if (this.$name$.length > 0) {\n"
+      "if (this.$name$.length > 0) {\n");
+    printer->Indent();
+    GenerateRepeatedDataSizeCode(printer);
+    printer->Outdent();
+    printer->Print(variables_,
       "  output.writeRawVarint32($tag$);\n"
-      "  output.writeRawVarint32($name$MemoizedSerializedSize);\n"
+      "  output.writeRawVarint32(dataSize);\n"
       "}\n");
     printer->Print(variables_,
       "for ($type$ element : this.$name$) {\n"
@@ -428,27 +504,15 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
     "if (this.$name$.length > 0) {\n");
   printer->Indent();
 
-  if (FixedSize(descriptor_->type()) == -1) {
-    printer->Print(variables_,
-      "int dataSize = 0;\n"
-      "for ($type$ element : this.$name$) {\n"
-      "  dataSize += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
-      "    .compute$capitalized_type$SizeNoTag(element);\n"
-      "}\n");
-  } else {
-    printer->Print(variables_,
-      "int dataSize = $fixed_size$ * this.$name$.length;\n");
-  }
+  GenerateRepeatedDataSizeCode(printer);
 
   printer->Print(
     "size += dataSize;\n");
   if (descriptor_->options().packed()) {
-    // cache the data size for packed fields.
     printer->Print(variables_,
       "size += $tag_size$;\n"
       "size += com.google.protobuf.nano.CodedOutputByteBufferNano\n"
-      "  .computeRawVarint32Size(dataSize);\n"
-      "$name$MemoizedSerializedSize = dataSize;\n");
+      "  .computeRawVarint32Size(dataSize);\n");
   } else {
     printer->Print(variables_,
         "size += $tag_size$ * this.$name$.length;\n");
@@ -456,16 +520,8 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 
   printer->Outdent();
 
-  // set cached size to 0 for empty packed fields.
-  if (descriptor_->options().packed()) {
-    printer->Print(variables_,
-      "} else {\n"
-      "  $name$MemoizedSerializedSize = 0;\n"
-      "}\n");
-  } else {
-    printer->Print(
-      "}\n");
-  }
+  printer->Print(
+    "}\n");
 }
 
 string RepeatedPrimitiveFieldGenerator::GetBoxedType() const {
